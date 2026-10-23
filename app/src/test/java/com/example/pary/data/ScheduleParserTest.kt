@@ -187,8 +187,8 @@ class RemindersTest {
     fun remindsBeforeFirstLessonOfTheDay() {
         val reminder = com.example.pary.notify.Reminders.next(lessons, 0, 30, at(monday - 1, 12, 0))!!
         assertEquals(at(monday, 7, 50), reminder.triggerMillis)
-        assertEquals("08:20", reminder.firstLesson.start)
-        assertEquals(2, reminder.lessonCount)
+        assertEquals("08:20", reminder.lessons.first().start)
+        assertEquals(2, reminder.dayLessonCount)
         assertEquals("11:25", reminder.lastEnd)
     }
 
@@ -378,5 +378,118 @@ class DayToShowTest {
     @Test
     fun returnsNullWithoutAnyLessons() {
         assertEquals(null, emptyList<Lesson>().dayToShow(monday, at(8, 0)))
+    }
+}
+
+class EveryLessonReminderTest {
+    private val monday = Dates.epochDay(2026, 9, 14)
+
+    private fun lesson(start: String, end: String, subject: String = "Предмет", subgroups: Set<Int> = emptySet()) = Lesson(
+        dayOfWeek = 0, number = 1, start = start, end = end, subject = subject, type = null,
+        teachers = emptyList(), rooms = emptyList(), weekType = WeekType.ALL,
+        firstDay = monday, lastDay = monday + 60, subgroups = subgroups,
+    )
+
+    private fun at(hour: Int, minute: Int) = Dates.startOfDayMillis(monday) + (hour * 60 + minute) * 60_000L
+
+    private val every = com.example.pary.data.ReminderMode.EVERY_LESSON
+    private val lessons = listOf(lesson("08:20", "09:45"), lesson("10:00", "11:25"), lesson("13:30", "14:55"))
+
+    private fun next(now: Long, lead: Int = 30) = com.example.pary.notify.Reminders.next(lessons, 0, lead, now, every)
+
+    @Test
+    fun remindsAboutEachLessonInOrder() {
+        val first = next(at(0, 0))!!
+        assertEquals(at(7, 50), first.triggerMillis)
+        assertEquals(true, first.isFirstOfDay)
+        assertEquals(30, first.minutesBefore)
+
+        val second = next(first.triggerMillis)!!
+        // 10:00 минус 30 минут = 09:30, но пара до 09:45 ещё идёт: напоминание на перемене
+        assertEquals(at(9, 45), second.triggerMillis)
+        assertEquals(false, second.isFirstOfDay)
+        assertEquals(15, second.minutesBefore)
+
+        val third = next(second.triggerMillis)!!
+        // после большого окна напоминание за положенные 30 минут
+        assertEquals(at(13, 0), third.triggerMillis)
+        assertEquals(30, third.minutesBefore)
+        assertEquals("13:30", third.lessons.first().start)
+    }
+
+    @Test
+    fun firstOnlyModeIgnoresLaterLessons() {
+        val reminder = com.example.pary.notify.Reminders.next(lessons, 0, 30, at(8, 0), com.example.pary.data.ReminderMode.FIRST_ONLY)!!
+        // первая пара уже позади для напоминания, поэтому следующее напоминание в следующие дни
+        assertEquals(Dates.startOfDayMillis(monday + 7) + (7 * 60 + 50) * 60_000L, reminder.triggerMillis)
+    }
+
+    @Test
+    fun simultaneousLessonsAreOneReminder() {
+        val mixed = listOf(
+            lesson("08:20", "09:45", "А", setOf(1)), lesson("08:20", "09:45", "Б", setOf(2)),
+            lesson("10:00", "11:25", "В"),
+        )
+        val first = com.example.pary.notify.Reminders.next(mixed, 0, 30, at(0, 0), every)!!
+        assertEquals(listOf("А", "Б"), first.lessons.map { it.subject })
+        val second = com.example.pary.notify.Reminders.next(mixed, 0, 30, first.triggerMillis, every)!!
+        assertEquals(listOf("В"), second.lessons.map { it.subject })
+        assertEquals(at(9, 45), second.triggerMillis)
+    }
+
+    @Test
+    fun skipsLessonWhoseReminderTimeHasPassed() {
+        // 09:50: напоминание о 10:00 (на 09:45) уже прошло, значит, следующее о паре в 13:30
+        val reminder = next(at(9, 50))!!
+        assertEquals("13:30", reminder.lessons.first().start)
+    }
+
+    @Test
+    fun describesLessonsForNotification() {
+        assertEquals("10:00 · Предмет", com.example.pary.notify.Reminders.describe(listOf(lesson("10:00", "11:25"))))
+        assertEquals(
+            "10:00 · А / Б",
+            com.example.pary.notify.Reminders.describe(listOf(lesson("10:00", "11:25", "А"), lesson("10:00", "11:25", "Б"))),
+        )
+        assertEquals("1 ч 30 мин", com.example.pary.notify.Reminders.formatMinutes(90))
+        assertEquals("15 мин", com.example.pary.notify.Reminders.formatMinutes(15))
+    }
+}
+
+class VersionsTest {
+    @Test
+    fun comparesVersionsNumerically() {
+        assertTrue(com.example.pary.update.Versions.isNewer("1.2", "1.1"))
+        assertTrue(com.example.pary.update.Versions.isNewer("1.10", "1.9"))
+        assertTrue(com.example.pary.update.Versions.isNewer("2.0", "1.99"))
+        assertTrue(com.example.pary.update.Versions.isNewer("1.1.1", "1.1"))
+        assertFalse(com.example.pary.update.Versions.isNewer("1.1", "1.1"))
+        assertFalse(com.example.pary.update.Versions.isNewer("1.1", "1.1.0"))
+        assertFalse(com.example.pary.update.Versions.isNewer("1.0", "1.1"))
+    }
+
+    @Test
+    fun parsesTagsAndRedirectAddresses() {
+        assertEquals("1.2", com.example.pary.update.Versions.fromTag("v1.2"))
+        assertEquals("1.2.3", com.example.pary.update.Versions.fromTag("1.2.3"))
+        assertEquals(null, com.example.pary.update.Versions.fromTag("beta"))
+        assertEquals(null, com.example.pary.update.Versions.fromTag("v1.2-rc1"))
+        assertEquals("v1.2", com.example.pary.update.Versions.tagFromLocation("https://github.com/ar1stov/pary-gstu/releases/tag/v1.2"))
+        assertEquals("v1.2", com.example.pary.update.Versions.tagFromLocation("https://github.com/ar1stov/pary-gstu/releases/tag/v1.2?foo=1"))
+        assertEquals(null, com.example.pary.update.Versions.tagFromLocation("https://github.com/ar1stov/pary-gstu/releases"))
+        assertEquals(null, com.example.pary.update.Versions.tagFromLocation(null))
+    }
+
+    @Test
+    fun buildsDownloadAddressesAndReadsChecksum() {
+        assertEquals(
+            "https://github.com/ar1stov/pary-gstu/releases/download/v1.2/Pary-GGTU-1.2.apk",
+            com.example.pary.update.Versions.apkUrl("v1.2", "1.2"),
+        )
+        val hash = "A".repeat(64)
+        assertEquals("a".repeat(64), com.example.pary.update.Versions.expectedHash("$hash  Pary-GGTU-1.2.apk\n"))
+        assertEquals("b".repeat(64), com.example.pary.update.Versions.expectedHash("b".repeat(64)))
+        assertEquals(null, com.example.pary.update.Versions.expectedHash("<html>404</html>"))
+        assertEquals(null, com.example.pary.update.Versions.expectedHash("abc"))
     }
 }

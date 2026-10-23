@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.pary.R
 import com.example.pary.data.AppSettings
+import com.example.pary.data.ReminderMode
 
 private val LeadOptions = listOf(15, 30, 60)
 
@@ -27,6 +28,7 @@ fun NotificationSettingsDialog(
     isExactAlarmAllowed: Boolean,
     onRemindersChange: (Boolean) -> Unit,
     onLeadChange: (Int) -> Unit,
+    onModeChange: (ReminderMode) -> Unit,
     onChangeAlertsChange: (Boolean) -> Unit,
     onSendSample: () -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
@@ -47,6 +49,18 @@ fun NotificationSettingsDialog(
                                 label = { Text(if (minutes == 60) "1 ч" else "$minutes мин") },
                             )
                         }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = settings.reminderMode == ReminderMode.FIRST_ONLY,
+                            onClick = { onModeChange(ReminderMode.FIRST_ONLY) },
+                            label = { Text(stringResource(R.string.reminder_mode_first)) },
+                        )
+                        FilterChip(
+                            selected = settings.reminderMode == ReminderMode.EVERY_LESSON,
+                            onClick = { onModeChange(ReminderMode.EVERY_LESSON) },
+                            label = { Text(stringResource(R.string.reminder_mode_every)) },
+                        )
                     }
                     if (!isExactAlarmAllowed) {
                         Text(

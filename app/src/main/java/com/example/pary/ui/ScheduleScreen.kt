@@ -89,6 +89,10 @@ import com.example.pary.data.subgroupNumbers
 import com.example.pary.ui.theme.ParyColors
 import com.example.pary.ui.theme.lessonAccent
 import com.example.pary.notify.Notifications
+import com.example.pary.update.InstallEvent
+import com.example.pary.update.InstallEvents
+import com.example.pary.update.UpdateController
+import com.example.pary.update.UpdateUiState
 import com.example.pary.notify.Reminders
 import com.example.pary.notify.onScheduleChanged
 import java.text.SimpleDateFormat
@@ -133,6 +137,9 @@ fun ScheduleScreen(
     var showChanges by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
+    val activityContext = LocalContext.current
+    val updater = remember { UpdateController(appContext, scope) }
+    var showUpdate by remember { mutableStateOf(false) }
     val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
     var showSettings by remember { mutableStateOf(false) }
     // Разрешение на уведомления (Android 13+): включаем напоминание только после согласия.
@@ -148,6 +155,19 @@ fun ScheduleScreen(
         } else {
             pendingPermissionAction = action
             permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // Проверка обновлений при запуске (не чаще раза в полчаса) и ответы установщика Android.
+    LaunchedEffect(Unit) { updater.check() }
+    LaunchedEffect(Unit) {
+        InstallEvents.events.collect { event ->
+            when (event) {
+                is InstallEvent.Confirm -> activityContext.startActivity(event.intent)
+                is InstallEvent.Failure -> updater.installFailed(event.message)
+                InstallEvent.Success -> Unit
+            }
+            InstallEvents.consumed()
         }
     }
 
@@ -228,6 +248,7 @@ fun ScheduleScreen(
             if (subgroups.isNotEmpty()) {
                 SubgroupChips(subgroups, group.subgroup, onSubgroupChange)
             }
+            UpdateBanner(updater.state, onClick = { showUpdate = true })
             if (changes.isNotEmpty()) {
                 ChangesBanner(count = changes.size, onClick = { showChanges = true })
             }
@@ -256,6 +277,17 @@ fun ScheduleScreen(
         }
     }
 
+    if (showUpdate && updater.state != UpdateUiState.Idle) {
+        UpdateDialog(
+            state = updater.state,
+            onStart = updater::start,
+            onDismiss = {
+                showUpdate = false
+                if (updater.state is UpdateUiState.Failed) updater.reset()
+            },
+        )
+    }
+
     if (showChanges) {
         ChangesDialog(
             changes = changes,
@@ -277,12 +309,13 @@ fun ScheduleScreen(
                 else scope.launch { settingsRepository.setRemindersEnabled(false) }
             },
             onLeadChange = { scope.launch { settingsRepository.setReminderLeadMinutes(it) } },
+            onModeChange = { scope.launch { settingsRepository.setReminderMode(it) } },
             onChangeAlertsChange = { on ->
                 if (on) withNotificationPermission { settingsRepository.setChangeAlertsEnabled(true) }
                 else scope.launch { settingsRepository.setChangeAlertsEnabled(false) }
             },
             onSendSample = {
-                withNotificationPermission { Reminders.postSample(appContext, settings.reminderLeadMinutes) }
+                withNotificationPermission { Reminders.postSample(appContext, settings.reminderLeadMinutes, settings.reminderMode) }
             },
             onOpenExactAlarmSettings = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
