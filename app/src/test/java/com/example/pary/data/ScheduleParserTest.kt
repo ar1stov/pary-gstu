@@ -337,3 +337,46 @@ class DayItemsTest {
         assertEquals("1 ч 35 мин", formatGap(95))
     }
 }
+
+class DayToShowTest {
+    private val monday = Dates.epochDay(2026, 9, 14)
+
+    private fun lesson(day: Int, start: String, end: String) = Lesson(
+        dayOfWeek = day, number = 1, start = start, end = end, subject = "Предмет", type = null,
+        teachers = emptyList(), rooms = emptyList(), weekType = WeekType.ALL,
+        firstDay = monday, lastDay = monday + 60,
+    )
+
+    private fun at(hour: Int, minute: Int) = hour * 60 + minute
+
+    private val lessons = listOf(lesson(0, "08:20", "09:45"), lesson(0, "10:00", "11:25"), lesson(1, "10:00", "11:25"))
+
+    @Test
+    fun showsTodayWhileSomeLessonIsNotFinished() {
+        assertEquals(monday, lessons.dayToShow(monday, at(7, 0)))
+        assertEquals(monday, lessons.dayToShow(monday, at(10, 30))) // вторая пара идёт
+        assertEquals(monday, lessons.dayToShow(monday, at(9, 50))) // первая закончилась, вторая впереди
+    }
+
+    @Test
+    fun movesToNextLessonDayWhenTodayIsOver() {
+        assertEquals(monday + 1, lessons.dayToShow(monday, at(11, 30)))
+        assertEquals(monday + 1, lessons.dayToShow(monday, at(23, 0)))
+    }
+
+    @Test
+    fun skipsDaysWithoutLessons() {
+        assertEquals(monday + 7, lessons.dayToShow(monday + 2, at(9, 0)))
+    }
+
+    @Test
+    fun staysOnTodayWhenNothingFollows() {
+        val single = listOf(lesson(0, "08:20", "09:45").copy(lastDay = monday))
+        assertEquals(monday, single.dayToShow(monday, at(12, 0)))
+    }
+
+    @Test
+    fun returnsNullWithoutAnyLessons() {
+        assertEquals(null, emptyList<Lesson>().dayToShow(monday, at(8, 0)))
+    }
+}

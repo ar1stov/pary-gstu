@@ -39,9 +39,9 @@ import com.example.pary.data.GroupRepository
 import com.example.pary.data.Lesson
 import com.example.pary.data.ScheduleRepository
 import com.example.pary.data.SettingsRepository
+import com.example.pary.data.dayToShow
 import com.example.pary.data.isFinishedAt
 import com.example.pary.data.isRunningAt
-import com.example.pary.data.nextDayWithLessons
 import com.example.pary.data.on
 import com.example.pary.notify.ChangeNotifier
 import com.example.pary.ui.theme.ParyColors
@@ -137,7 +137,7 @@ private fun Schedule(
     nowMinutes: Int,
     openApp: Action,
 ) {
-    val shownDay = lessons.nextDayWithLessons(today, group.subgroup)
+    val shownDay = lessons.dayToShow(today, nowMinutes, group.subgroup)
     val day = shownDay ?: today
     val isAbove = Dates.isAboveWeek(day)
     val week = context.getString(if (isAbove) R.string.week_above else R.string.week_below)
@@ -157,15 +157,22 @@ private fun Schedule(
         return
     }
     if (shownDay != today) {
+        // Сегодня пары были, но закончились, или их не было совсем.
+        val hadLessonsToday = lessons.on(today, group.subgroup).isNotEmpty()
         Text(
-            text = context.getString(R.string.widget_no_lessons_today),
+            text = context.getString(if (hadLessonsToday) R.string.widget_today_done else R.string.widget_no_lessons_today),
             modifier = GlanceModifier.padding(top = 6.dp),
             style = style(ParyColors.Accent, 12),
         )
     }
     LazyColumn(modifier = GlanceModifier.fillMaxSize().padding(top = 8.dp)) {
         items(lessons.on(day, group.subgroup)) { lesson ->
-            LessonRow(lesson, isNow = day == today && lesson.isRunningAt(nowMinutes), openApp = openApp)
+            LessonRow(
+                lesson,
+                isNow = day == today && lesson.isRunningAt(nowMinutes),
+                openApp = openApp,
+                isDone = day == today && lesson.isFinishedAt(nowMinutes),
+            )
         }
     }
 }
@@ -181,12 +188,10 @@ private fun CompactSchedule(
     nowMinutes: Int,
     openApp: Action,
 ) {
-    // Сегодня показываем только ещё не закончившиеся пары; когда их нет, ближайший день с парами.
-    val left = lessons.on(today, group.subgroup).filter { !it.isFinishedAt(nowMinutes) }
-    val shown = if (left.isNotEmpty()) {
-        Shown(today, left)
-    } else {
-        lessons.nextDayWithLessons(today + 1, group.subgroup)?.let { Shown(it, lessons.on(it, group.subgroup)) }
+    // Тот же день, что показывает виджет побольше; сегодня только ещё не закончившиеся пары.
+    val shown = lessons.dayToShow(today, nowMinutes, group.subgroup)?.let { day ->
+        val all = lessons.on(day, group.subgroup)
+        Shown(day, if (day == today) all.filter { !it.isFinishedAt(nowMinutes) }.ifEmpty { all } else all)
     }
     if (shown == null) {
         Text(text = group.name, style = style(ParyColors.Text, 16, bold = true))
@@ -219,8 +224,9 @@ private fun CompactSchedule(
 }
 
 @Composable
-private fun LessonRow(lesson: Lesson, isNow: Boolean, openApp: Action, compact: Boolean = false) {
+private fun LessonRow(lesson: Lesson, isNow: Boolean, openApp: Action, compact: Boolean = false, isDone: Boolean = false) {
     val accent = lessonAccent(lesson.type)
+    val textColor = if (isDone) ParyColors.TextMuted else ParyColors.Text
     val main = if (compact) 12 else 13
     val small = if (compact) 10 else 11
     var modifier = GlanceModifier.fillMaxWidth()
@@ -230,13 +236,13 @@ private fun LessonRow(lesson: Lesson, isNow: Boolean, openApp: Action, compact: 
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = GlanceModifier.width(44.dp)) {
-            Text(text = lesson.start, style = style(ParyColors.Text, main, bold = true))
+            Text(text = lesson.start, style = style(textColor, main, bold = true))
             Text(text = lesson.end, style = style(ParyColors.TextMuted, small))
         }
         Box(modifier = GlanceModifier.width(3.dp).fillMaxHeight().background(color(accent))) {}
         Spacer(GlanceModifier.width(8.dp))
         Column {
-            Text(text = lesson.subject, maxLines = 1, style = style(ParyColors.Text, main, bold = isNow))
+            Text(text = lesson.subject, maxLines = 1, style = style(textColor, main, bold = isNow))
             Row {
                 lesson.type?.let { Text(text = it, maxLines = 1, style = style(accent, small)) }
                 val rest = listOfNotNull(

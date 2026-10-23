@@ -15,11 +15,12 @@
     <string name="week_below">Под чертой</string>
     <string name="schedule_load_error">Не удалось загрузить расписание. Проверьте интернет.</string>
     <string name="offline_cached">Нет связи. Показаны сохранённые данные от %1$s</string>
-    <string name="widget_name">Расписание на день (4×3)</string>
-    <string name="widget_description">Пары на сегодня или ближайший день занятий</string>
+    <string name="widget_name">Расписание на день</string>
+    <string name="widget_description">Все пары дня. Когда сегодняшние закончились, показывает ближайший день с парами</string>
     <string name="widget_pick_group">Откройте приложение и выберите группу</string>
     <string name="widget_no_data">Расписание ещё не загружено. Откройте приложение с интернетом.</string>
     <string name="widget_no_lessons_today">Сегодня пар нет. Ближайшие занятия:</string>
+    <string name="widget_today_done">Сегодня пары закончились. Ближайшие занятия:</string>
     <string name="widget_no_lessons_soon">В ближайшие две недели пар нет</string>
     <string name="subgroup_all">Все подгруппы</string>
     <string name="subgroup_n">Подгруппа %1$d</string>
@@ -34,8 +35,8 @@
     <string name="clear">Очистить</string>
     <string name="no_lessons_hint">Можно отдохнуть</string>
     <string name="open_group_menu">Сменить группу</string>
-    <string name="widget_compact_name">Расписание (4×2)</string>
-    <string name="widget_compact_description">Две ближайшие пары, которые ещё не закончились</string>
+    <string name="widget_compact_name">Ближайшие пары</string>
+    <string name="widget_compact_description">Пары, которые ещё не начались или идут сейчас. Когда сегодняшние закончились, показывает следующий день</string>
     <string name="channel_reminders">Напоминания о парах</string>
     <string name="channel_changes">Изменения в расписании</string>
     <string name="reminder_title">Первая пара через %1$s</string>

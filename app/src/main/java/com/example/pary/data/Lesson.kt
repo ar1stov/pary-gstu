@@ -65,6 +65,16 @@ fun List<Lesson>.on(day: Long, subgroup: Int = 0): List<Lesson> =
 fun List<Lesson>.nextDayWithLessons(from: Long, subgroup: Int = 0, limit: Int = 14): Long? =
     (0..limit).map { from + it }.firstOrNull { day -> any { it.isOn(day) && it.isForSubgroup(subgroup) } }
 
+/**
+ * Какой день показывать в виджетах: сегодня, пока остались ещё не закончившиеся пары, а потом ближайший
+ * день с парами. Если дальше пар нет, а сегодняшние уже прошли, остаётся сегодня; если пар нет совсем, null.
+ */
+fun List<Lesson>.dayToShow(today: Long, nowMinutes: Int, subgroup: Int = 0): Long? {
+    val todays = on(today, subgroup)
+    if (todays.any { !it.isFinishedAt(nowMinutes) }) return today
+    return nextDayWithLessons(today + 1, subgroup) ?: today.takeIf { todays.isNotEmpty() }
+}
+
 /** Номера подгрупп, которые встречаются в расписании (пусто — деления на подгруппы нет). */
 fun List<Lesson>.subgroupNumbers(): List<Int> = flatMap { it.subgroups }.distinct().sorted()
 
