@@ -1,8 +1,8 @@
 name: Сообщение в Telegram о новой версии
 
 # Срабатывает, когда на GitHub опубликован релиз, и отправляет в чат группы название версии,
-# что нового и ссылку на скачивание. Вручную (кнопка Run workflow) можно отправить пробный текст
-# или готовое сообщение из папки .github/announcements.
+# что нового и ссылку на скачивание. Вручную (кнопка Run workflow) можно отправить пробный текст,
+# готовое сообщение из .github/announcements или альбом скриншотов из docs/screenshots.
 on:
   release:
     types: [published]
@@ -12,8 +12,16 @@ on:
         description: Имя файла с готовым сообщением из .github/announcements (например launch.html). Пусто = пробный текст
         required: false
         default: ''
+      photos:
+        description: Скриншоты из docs/screenshots через запятую (от 2 до 10 файлов), отправятся альбомом
+        required: false
+        default: ''
+      caption:
+        description: Подпись к альбому (только для скриншотов)
+        required: false
+        default: Скриншоты приложения «Пары ГГТУ»
       text:
-        description: Текст пробного сообщения (используется, если файл не указан)
+        description: Текст пробного сообщения (используется, если файл и скриншоты не указаны)
         required: false
         default: Пробное сообщение от бота «Пары ГГТУ»
 
@@ -40,12 +48,69 @@ jobs:
           RELEASE_BODY: ${{ github.event.release.body }}
           RELEASE_URL: ${{ github.event.release.html_url }}
           MESSAGE_FILE: ${{ github.event.inputs.message_file }}
+          PHOTOS: ${{ github.event.inputs.photos }}
+          CAPTION: ${{ github.event.inputs.caption }}
           TEST_TEXT: ${{ github.event.inputs.text }}
         run: |
           set -eu
           if [ -z "${BOT_TOKEN}" ] || [ -z "${CHAT_ID}" ]; then
             echo "Не заданы секреты TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID" >&2
             exit 1
+          fi
+          api="https://api.telegram.org/bot${BOT_TOKEN}"
+
+          # Допустимое имя файла: буквы, цифры, точка, дефис и подчёркивание, без точки в начале.
+          check_name() {
+            case "$1" in
+              ""|*[!A-Za-z0-9_.-]*|.*)
+                echo "Недопустимое имя файла: $1" >&2
+                exit 1
+                ;;
+            esac
+          }
+
+          if [ "${EVENT}" = "workflow_dispatch" ] && [ -n "${PHOTOS}" ]; then
+            # Альбом скриншотов: sendMediaGroup, файлы прикладываются к запросу.
+            files=()
+            valid=""
+            index=0
+            IFS=',' read -ra names <<< "${PHOTOS}"
+            for raw in "${names[@]}"; do
+              name="$(printf '%s' "${raw}" | tr -d '[:space:]')"
+              check_name "${name}"
+              path="docs/screenshots/${name}"
+              if [ ! -f "${path}" ]; then
+                echo "Файл не найден: ${path}" >&2
+                exit 1
+              fi
+              valid="${valid}${name}"$'\n'
+              files+=(--form "photo${index}=@${path}")
+              index=$((index + 1))
+            done
+            if [ "${index}" -lt 2 ] || [ "${index}" -gt 10 ]; then
+              echo "Для альбома нужно от 2 до 10 файлов, указано: ${index}" >&2
+              exit 1
+            fi
+            # Описание альбома собирает python3: он сам экранирует кавычки в подписи.
+            media="$(PHOTO_NAMES="${valid}" python3 -c '
+          import json, os
+          names = [n for n in os.environ["PHOTO_NAMES"].split("\n") if n]
+          caption = os.environ.get("CAPTION", "")
+          items = []
+          for i, name in enumerate(names):
+              item = {"type": "photo", "media": "attach://photo%d" % i}
+              if i == 0 and caption:
+                  item["caption"] = caption
+              items.append(item)
+          print(json.dumps(items, ensure_ascii=False))
+          ')"
+            curl --fail-with-body --silent --show-error \
+              --request POST "${api}/sendMediaGroup" \
+              --form "chat_id=${CHAT_ID}" \
+              --form "media=${media}" \
+              "${files[@]}" > /dev/null
+            echo "Альбом отправлен: ${index} фото"
+            exit 0
           fi
 
           parse_mode=""
@@ -54,13 +119,7 @@ jobs:
             body="$(printf '%s' "${RELEASE_BODY:0:3000}" | sed 's/\*\*//g; s/`//g')"
             text="Вышла новая версия: ${RELEASE_NAME}"$'\n\n'"${body}"$'\n\n'"Скачать: ${RELEASE_URL}"
           elif [ -n "${MESSAGE_FILE}" ]; then
-            # Только имя файла из .github/announcements: без слэшей и точек в начале.
-            case "${MESSAGE_FILE}" in
-              *[!A-Za-z0-9_.-]*|.*)
-                echo "Недопустимое имя файла: ${MESSAGE_FILE}" >&2
-                exit 1
-                ;;
-            esac
+            check_name "${MESSAGE_FILE}"
             path=".github/announcements/${MESSAGE_FILE}"
             if [ ! -f "${path}" ]; then
               echo "Файл не найден: ${path}" >&2
@@ -82,6 +141,6 @@ jobs:
           fi
 
           curl --fail-with-body --silent --show-error \
-            --request POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --request POST "${api}/sendMessage" \
             "${args[@]}" > /dev/null
           echo "Сообщение отправлено"
