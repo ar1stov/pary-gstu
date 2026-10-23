@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.example.pary.R
 import com.example.pary.data.GroupInfo
 import com.example.pary.data.GroupSearchResult
-import com.example.pary.ui.theme.ParyColors
+import com.example.pary.ui.theme.pary
 import com.example.pary.ui.theme.ParyTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -153,7 +153,7 @@ private fun GroupCard(group: GroupInfo, onClick: () -> Unit) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = ParyColors.Accent,
+                tint = MaterialTheme.pary.accent,
             )
         }
     }

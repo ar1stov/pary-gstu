@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.example.pary.R
 import com.example.pary.data.AppSettings
 import com.example.pary.data.ReminderMode
+import com.example.pary.data.ThemeMode
 
 private val LeadOptions = listOf(15, 30, 60)
 
@@ -29,6 +30,7 @@ fun NotificationSettingsDialog(
     onRemindersChange: (Boolean) -> Unit,
     onLeadChange: (Int) -> Unit,
     onModeChange: (ReminderMode) -> Unit,
+    onThemeChange: (ThemeMode) -> Unit,
     onChangeAlertsChange: (Boolean) -> Unit,
     onSendSample: () -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
@@ -36,9 +38,33 @@ fun NotificationSettingsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.notifications_title)) },
+        title = { Text(stringResource(R.string.settings_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = stringResource(R.string.theme_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = settings.themeMode == mode,
+                            onClick = { onThemeChange(mode) },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (mode) {
+                                            ThemeMode.SYSTEM -> R.string.theme_system
+                                            ThemeMode.LIGHT -> R.string.theme_light
+                                            ThemeMode.DARK -> R.string.theme_dark
+                                        },
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
                 SwitchRow(stringResource(R.string.setting_reminders), settings.remindersEnabled, onRemindersChange)
                 if (settings.remindersEnabled) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

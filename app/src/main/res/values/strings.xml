@@ -80,4 +80,9 @@
     <string name="update_signature_mismatch">Это приложение установлено не с GitHub (подпись отличается), поэтому обновить его на месте нельзя. Удалите его и установите файл со страницы релизов.</string>
     <string name="update_failed_generic">Не удалось обновиться. Проверьте интернет и попробуйте ещё раз.</string>
     <string name="update_install_failed">Android не смог установить обновление.</string>
+    <string name="settings_title">Настройки</string>
+    <string name="theme_title">Тема</string>
+    <string name="theme_system">Авто</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_dark">Тёмная</string>
 </resources>

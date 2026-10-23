@@ -17,7 +17,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.pary.R
-import com.example.pary.ui.theme.ParyColors
+import com.example.pary.ui.theme.pary
 import com.example.pary.update.UpdateInfo
 import com.example.pary.update.UpdateUiState
 
@@ -45,12 +45,12 @@ fun UpdateBanner(state: UpdateUiState, onClick: () -> Unit) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelLarge,
-        color = ParyColors.Practice,
+        color = MaterialTheme.pary.practice,
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(ParyColors.Practice.copy(alpha = 0.14f))
+            .background(MaterialTheme.pary.practice.copy(alpha = 0.14f))
             .clickable(onClick = onClick)
             .padding(12.dp),
     )

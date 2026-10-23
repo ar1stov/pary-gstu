@@ -493,3 +493,81 @@ class VersionsTest {
         assertEquals(null, com.example.pary.update.Versions.expectedHash("abc"))
     }
 }
+
+/** Читаемость палитр: контраст по WCAG (текст не ниже 4,5 : 1, крупные цветные метки не ниже 3 : 1). */
+class PaletteContrastTest {
+    private fun channel(value: Float): Double {
+        val v = value.toDouble()
+        return if (v <= 0.03928) v / 12.92 else Math.pow((v + 0.055) / 1.055, 2.4)
+    }
+
+    private fun luminance(c: androidx.compose.ui.graphics.Color): Double =
+        0.2126 * channel(c.red) + 0.7152 * channel(c.green) + 0.0722 * channel(c.blue)
+
+    private fun contrast(a: androidx.compose.ui.graphics.Color, b: androidx.compose.ui.graphics.Color): Double {
+        val x = luminance(a)
+        val y = luminance(b)
+        return (maxOf(x, y) + 0.05) / (minOf(x, y) + 0.05)
+    }
+
+    /** Цвет поверх фона с прозрачностью [alpha] (так нарисованы метки: цвет с 16% непрозрачности). */
+    private fun over(
+        color: androidx.compose.ui.graphics.Color,
+        background: androidx.compose.ui.graphics.Color,
+        alpha: Float,
+    ) = androidx.compose.ui.graphics.Color(
+        red = color.red * alpha + background.red * (1 - alpha),
+        green = color.green * alpha + background.green * (1 - alpha),
+        blue = color.blue * alpha + background.blue * (1 - alpha),
+    )
+
+    private val palettes = mapOf(
+        "тёмная" to com.example.pary.ui.theme.ParyColors.Dark,
+        "светлая" to com.example.pary.ui.theme.ParyColors.Light,
+    )
+
+    @Test
+    fun mainTextIsEasyToRead() {
+        for ((name, p) in palettes) {
+            for (surface in listOf(p.background, p.surface, p.accentContainer)) {
+                assertTrue("$name: основной текст", contrast(p.text, surface) >= 7.0)
+            }
+            for (surface in listOf(p.background, p.surface)) {
+                assertTrue("$name: вторичный текст", contrast(p.textMuted, surface) >= 4.5)
+            }
+        }
+    }
+
+    @Test
+    fun accentTextIsReadableOnBackgroundsAndOnOwnTag() {
+        for ((name, p) in palettes) {
+            val colors = mapOf(
+                "акцент" to p.accent, "над чертой" to p.above, "под чертой" to p.below, "лекция" to p.lecture,
+                "практика" to p.practice, "лабораторная" to p.lab, "другое" to p.otherType, "ошибка" to p.error,
+            )
+            for ((label, color) in colors) {
+                assertTrue("$name: $label на фоне", contrast(color, p.background) >= 3.0)
+                assertTrue("$name: $label на карточке", contrast(color, p.surface) >= 3.0)
+                // метка: цвет текста на собственной подложке (16% цвета поверх карточки)
+                assertTrue("$name: $label на метке", contrast(color, over(color, p.surface, 0.16f)) >= 3.0)
+            }
+        }
+    }
+
+    @Test
+    fun selectedDayAndBarsAreVisible() {
+        for ((name, p) in palettes) {
+            assertTrue("$name: текст на выбранном дне", contrast(p.onAccent, p.accent) >= 4.5)
+            assertTrue("$name: полоска без типа", contrast(p.noType, p.surface) >= 1.5)
+            assertTrue("$name: обводка карточки", contrast(p.outline, p.background) >= 1.1)
+        }
+    }
+
+    @Test
+    fun lessonColorsDifferWithinEachPalette() {
+        for ((name, p) in palettes) {
+            val types = listOf(p.lecture, p.practice, p.lab, p.otherType)
+            assertEquals("$name: цвета типов занятий", 4, types.toSet().size)
+        }
+    }
+}

@@ -86,7 +86,7 @@ import com.example.pary.data.isFinishedAt
 import com.example.pary.data.isRunningAt
 import com.example.pary.data.on
 import com.example.pary.data.subgroupNumbers
-import com.example.pary.ui.theme.ParyColors
+import com.example.pary.ui.theme.pary
 import com.example.pary.ui.theme.lessonAccent
 import com.example.pary.notify.Notifications
 import com.example.pary.update.InstallEvent
@@ -310,6 +310,7 @@ fun ScheduleScreen(
             },
             onLeadChange = { scope.launch { settingsRepository.setReminderLeadMinutes(it) } },
             onModeChange = { scope.launch { settingsRepository.setReminderMode(it) } },
+            onThemeChange = { scope.launch { settingsRepository.setThemeMode(it) } },
             onChangeAlertsChange = { on ->
                 if (on) withNotificationPermission { settingsRepository.setChangeAlertsEnabled(true) }
                 else scope.launch { settingsRepository.setChangeAlertsEnabled(false) }
@@ -388,7 +389,7 @@ private fun WeekSwitcher(
     onToday: () -> Unit,
 ) {
     val isAbove = Dates.isAboveWeek(weekStart)
-    val color = if (isAbove) ParyColors.Above else ParyColors.Below
+    val color = if (isAbove) MaterialTheme.pary.above else MaterialTheme.pary.below
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -505,12 +506,12 @@ private fun ChangesBanner(count: Int, onClick: () -> Unit) {
     Text(
         text = stringResource(R.string.changes_banner, count),
         style = MaterialTheme.typography.labelLarge,
-        color = ParyColors.Accent,
+        color = MaterialTheme.pary.accent,
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(ParyColors.Accent.copy(alpha = 0.14f))
+            .background(MaterialTheme.pary.accent.copy(alpha = 0.14f))
             .clickable(onClick = onClick)
             .padding(12.dp),
     )
@@ -539,12 +540,12 @@ private fun OfflineBanner(savedAt: String) {
     Text(
         text = stringResource(R.string.offline_cached, savedAt),
         style = MaterialTheme.typography.labelMedium,
-        color = ParyColors.Lab,
+        color = MaterialTheme.pary.lab,
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(ParyColors.Lab.copy(alpha = 0.14f))
+            .background(MaterialTheme.pary.lab.copy(alpha = 0.14f))
             .padding(12.dp),
     )
 }
@@ -624,10 +625,10 @@ private fun GapRow(minutes: Int) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LessonCard(lesson: Lesson, isNow: Boolean, isDone: Boolean) {
-    val accent = lessonAccent(lesson.type)
+    val accent = lessonAccent(lesson.type, MaterialTheme.pary)
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = if (isNow) ParyColors.AccentContainer else MaterialTheme.colorScheme.surfaceContainer,
+        color = if (isNow) MaterialTheme.pary.accentContainer else MaterialTheme.colorScheme.surfaceContainer,
         border = if (isNow) BorderStroke(1.5.dp, accent) else null,
         modifier = Modifier.fillMaxWidth().alpha(if (isDone) 0.6f else 1f),
     ) {
@@ -656,7 +657,7 @@ private fun LessonCard(lesson: Lesson, isNow: Boolean, isDone: Boolean) {
                     lesson.type?.let { Tag(it, accent) }
                     lesson.rooms.joinToString(", ").ifEmpty { null }?.let { Tag(it, MaterialTheme.colorScheme.onSurfaceVariant) }
                     lesson.subgroups.sorted().joinToString(", ").ifEmpty { null }?.let {
-                        Tag(stringResource(R.string.lesson_subgroups, it), ParyColors.Below)
+                        Tag(stringResource(R.string.lesson_subgroups, it), MaterialTheme.pary.below)
                     }
                 }
                 if (lesson.teachers.isNotEmpty()) {

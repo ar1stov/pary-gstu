@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
+/** Тема оформления: как в системе, светлая или тёмная. */
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
 /** О каких парах напоминать: только о первой паре дня или перед каждой. */
 enum class ReminderMode { FIRST_ONLY, EVERY_LESSON }
 
@@ -22,6 +25,7 @@ data class AppSettings(
     val reminderMode: ReminderMode = ReminderMode.FIRST_ONLY,
     /** Присылать уведомление, когда расписание изменилось. */
     val changeAlertsEnabled: Boolean = true,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
 )
 
 class SettingsRepository(private val context: Context) {
@@ -29,6 +33,7 @@ class SettingsRepository(private val context: Context) {
     private val leadKey = intPreferencesKey("reminder_lead_minutes")
     private val modeKey = intPreferencesKey("reminder_mode")
     private val changeAlertsKey = booleanPreferencesKey("change_alerts_enabled")
+    private val themeKey = intPreferencesKey("theme_mode")
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { it.toSettings() }
 
@@ -49,6 +54,10 @@ class SettingsRepository(private val context: Context) {
         Reminders.reschedule(context)
     }
 
+    suspend fun setThemeMode(mode: ThemeMode) {
+        context.dataStore.edit { it[themeKey] = mode.ordinal }
+    }
+
     suspend fun setChangeAlertsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[changeAlertsKey] = enabled }
     }
@@ -58,5 +67,6 @@ class SettingsRepository(private val context: Context) {
         reminderLeadMinutes = this[leadKey] ?: 30,
         reminderMode = ReminderMode.entries.getOrElse(this[modeKey] ?: 0) { ReminderMode.FIRST_ONLY },
         changeAlertsEnabled = this[changeAlertsKey] ?: true,
+        themeMode = ThemeMode.entries.getOrElse(this[themeKey] ?: 0) { ThemeMode.SYSTEM },
     )
 }

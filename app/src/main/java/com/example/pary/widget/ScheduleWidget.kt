@@ -30,7 +30,7 @@ import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
+import androidx.glance.color.ColorProvider
 import com.example.pary.MainActivity
 import com.example.pary.R
 import com.example.pary.data.Dates
@@ -45,6 +45,7 @@ import com.example.pary.data.isRunningAt
 import com.example.pary.data.on
 import com.example.pary.notify.ChangeNotifier
 import com.example.pary.ui.theme.ParyColors
+import com.example.pary.ui.theme.ParyPalette
 import com.example.pary.ui.theme.lessonAccent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -91,10 +92,13 @@ open class ScheduleWidget(private val isCompact: Boolean = false) : GlanceAppWid
 /** Компактный виджет 4×2: две ближайшие пары. */
 class CompactScheduleWidget : ScheduleWidget(isCompact = true)
 
-private fun color(c: Color) = ColorProvider(c)
+/** Какой цвет брать из палитры. Виджет показывает светлую палитру днём и тёмную ночью, по теме телефона. */
+private typealias Pick = (ParyPalette) -> Color
 
-private fun style(c: Color, size: Int, bold: Boolean = false) =
-    TextStyle(color = color(c), fontSize = size.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
+private fun color(pick: Pick) = ColorProvider(day = pick(ParyColors.Light), night = pick(ParyColors.Dark))
+
+private fun style(pick: Pick, size: Int, bold: Boolean = false) =
+    TextStyle(color = color(pick), fontSize = size.sp, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
 
 @Composable
 private fun WidgetContent(
@@ -109,7 +113,7 @@ private fun WidgetContent(
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
-            .background(color(ParyColors.Background))
+            .background(color { it.background })
             .cornerRadius(22.dp)
             .padding(if (isCompact) 10.dp else 14.dp)
             .clickable(openApp),
@@ -125,7 +129,7 @@ private fun WidgetContent(
 
 @Composable
 private fun Message(text: String, modifier: GlanceModifier = GlanceModifier) {
-    Text(text = text, modifier = modifier, style = style(ParyColors.Text, 14))
+    Text(text = text, modifier = modifier, style = style({ it.text }, 14))
 }
 
 @Composable
@@ -144,12 +148,12 @@ private fun Schedule(
 
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = GlanceModifier.defaultWeight()) {
-            Text(text = Dates.longLabel(day), style = style(ParyColors.TextMuted, 12))
-            Text(text = group.name, style = style(ParyColors.Text, 22, bold = true))
+            Text(text = Dates.longLabel(day), style = style({ it.textMuted }, 12))
+            Text(text = group.name, style = style({ it.text }, 22, bold = true))
         }
         Text(
             text = "● $week",
-            style = style(if (isAbove) ParyColors.Above else ParyColors.Below, 12, bold = true),
+            style = style({ if (isAbove) it.above else it.below }, 12, bold = true),
         )
     }
     if (shownDay == null) {
@@ -162,7 +166,7 @@ private fun Schedule(
         Text(
             text = context.getString(if (hadLessonsToday) R.string.widget_today_done else R.string.widget_no_lessons_today),
             modifier = GlanceModifier.padding(top = 6.dp),
-            style = style(ParyColors.Accent, 12),
+            style = style({ it.accent }, 12),
         )
     }
     LazyColumn(modifier = GlanceModifier.fillMaxSize().padding(top = 8.dp)) {
@@ -194,7 +198,7 @@ private fun CompactSchedule(
         Shown(day, if (day == today) all.filter { !it.isFinishedAt(nowMinutes) }.ifEmpty { all } else all)
     }
     if (shown == null) {
-        Text(text = group.name, style = style(ParyColors.Text, 16, bold = true))
+        Text(text = group.name, style = style({ it.text }, 16, bold = true))
         Message(context.getString(R.string.widget_no_lessons_soon), GlanceModifier.padding(top = 6.dp))
         return
     }
@@ -202,14 +206,14 @@ private fun CompactSchedule(
     val isAbove = Dates.isAboveWeek(shown.day)
     val dateText = Dates.label(shown.day)
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(text = group.name, style = style(ParyColors.Text, 16, bold = true))
+        Text(text = group.name, style = style({ it.text }, 16, bold = true))
         Text(
             text = "  $dateText",
             maxLines = 1,
             modifier = GlanceModifier.defaultWeight(),
-            style = style(ParyColors.TextMuted, 11),
+            style = style({ it.textMuted }, 11),
         )
-        Text(text = "●", style = style(if (isAbove) ParyColors.Above else ParyColors.Below, 12, bold = true))
+        Text(text = "●", style = style({ if (isAbove) it.above else it.below }, 12, bold = true))
     }
     LazyColumn(modifier = GlanceModifier.fillMaxSize().padding(top = 6.dp)) {
         items(shown.lessons) { lesson ->
@@ -225,19 +229,19 @@ private fun CompactSchedule(
 
 @Composable
 private fun LessonRow(lesson: Lesson, isNow: Boolean, openApp: Action, compact: Boolean = false, isDone: Boolean = false) {
-    val accent = lessonAccent(lesson.type)
-    val textColor = if (isDone) ParyColors.TextMuted else ParyColors.Text
+    val accent: Pick = { lessonAccent(lesson.type, it) }
+    val textColor: Pick = if (isDone) { { it.textMuted } } else { { it.text } }
     val main = if (compact) 12 else 13
     val small = if (compact) 10 else 11
     var modifier = GlanceModifier.fillMaxWidth()
         .padding(vertical = if (compact) 3.dp else 4.dp, horizontal = 6.dp)
         .clickable(openApp)
-    if (isNow) modifier = modifier.background(color(ParyColors.AccentContainer)).cornerRadius(12.dp)
+    if (isNow) modifier = modifier.background(color { it.accentContainer }).cornerRadius(12.dp)
 
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = GlanceModifier.width(44.dp)) {
             Text(text = lesson.start, style = style(textColor, main, bold = true))
-            Text(text = lesson.end, style = style(ParyColors.TextMuted, small))
+            Text(text = lesson.end, style = style({ it.textMuted }, small))
         }
         Box(modifier = GlanceModifier.width(3.dp).fillMaxHeight().background(color(accent))) {}
         Spacer(GlanceModifier.width(8.dp))
@@ -253,7 +257,7 @@ private fun LessonRow(lesson: Lesson, isNow: Boolean, openApp: Action, compact: 
                     Text(
                         text = (if (lesson.type != null) " · " else "") + rest,
                         maxLines = 1,
-                        style = style(ParyColors.TextMuted, small),
+                        style = style({ it.textMuted }, small),
                     )
                 }
             }
