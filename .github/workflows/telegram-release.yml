@@ -1,25 +1,35 @@
 name: Сообщение в Telegram о новой версии
 
 # Срабатывает, когда на GitHub опубликован релиз, и отправляет в чат группы название версии,
-# что нового и ссылку на скачивание. Вручную можно запустить пробное сообщение (кнопка Run workflow).
+# что нового и ссылку на скачивание. Вручную (кнопка Run workflow) можно отправить пробный текст
+# или готовое сообщение из папки .github/announcements.
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
+      message_file:
+        description: Имя файла с готовым сообщением из .github/announcements (например launch.html). Пусто = пробный текст
+        required: false
+        default: ''
       text:
-        description: Текст пробного сообщения
-        required: true
+        description: Текст пробного сообщения (используется, если файл не указан)
+        required: false
         default: Пробное сообщение от бота «Пары ГГТУ»
 
-# Рабочему процессу не нужны права на репозиторий: он только отправляет запрос в Telegram.
-permissions: {}
+# Рабочему процессу нужно только читать файлы репозитория.
+permissions:
+  contents: read
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
+      - name: Получить файлы репозитория
+        uses: actions/checkout@v4
+
       - name: Отправить сообщение в Telegram
+        shell: bash
         # Все значения передаются через переменные окружения, а не вставляются в команду:
         # так текст релиза не может подменить команду.
         env:
@@ -29,6 +39,7 @@ jobs:
           RELEASE_NAME: ${{ github.event.release.name }}
           RELEASE_BODY: ${{ github.event.release.body }}
           RELEASE_URL: ${{ github.event.release.html_url }}
+          MESSAGE_FILE: ${{ github.event.inputs.message_file }}
           TEST_TEXT: ${{ github.event.inputs.text }}
         run: |
           set -eu
@@ -37,17 +48,40 @@ jobs:
             exit 1
           fi
 
+          parse_mode=""
           if [ "${EVENT}" = "release" ]; then
             # Разметку GitHub (звёздочки, обратные кавычки) убираем: в Telegram она показалась бы как есть.
             body="$(printf '%s' "${RELEASE_BODY:0:3000}" | sed 's/\*\*//g; s/`//g')"
             text="Вышла новая версия: ${RELEASE_NAME}"$'\n\n'"${body}"$'\n\n'"Скачать: ${RELEASE_URL}"
+          elif [ -n "${MESSAGE_FILE}" ]; then
+            # Только имя файла из .github/announcements: без слэшей и точек в начале.
+            case "${MESSAGE_FILE}" in
+              *[!A-Za-z0-9_.-]*|.*)
+                echo "Недопустимое имя файла: ${MESSAGE_FILE}" >&2
+                exit 1
+                ;;
+            esac
+            path=".github/announcements/${MESSAGE_FILE}"
+            if [ ! -f "${path}" ]; then
+              echo "Файл не найден: ${path}" >&2
+              exit 1
+            fi
+            text="$(cat "${path}")"
+            parse_mode="HTML"
           else
             text="${TEST_TEXT}"
           fi
 
+          args=(
+            --data-urlencode "chat_id=${CHAT_ID}"
+            --data-urlencode "text=${text}"
+            --data-urlencode "disable_web_page_preview=true"
+          )
+          if [ -n "${parse_mode}" ]; then
+            args+=(--data-urlencode "parse_mode=${parse_mode}")
+          fi
+
           curl --fail-with-body --silent --show-error \
             --request POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${CHAT_ID}" \
-            --data-urlencode "text=${text}" \
-            --data-urlencode "disable_web_page_preview=true" > /dev/null
+            "${args[@]}" > /dev/null
           echo "Сообщение отправлено"
