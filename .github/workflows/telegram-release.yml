@@ -1,0 +1,53 @@
+name: Сообщение в Telegram о новой версии
+
+# Срабатывает, когда на GitHub опубликован релиз, и отправляет в чат группы название версии,
+# что нового и ссылку на скачивание. Вручную можно запустить пробное сообщение (кнопка Run workflow).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      text:
+        description: Текст пробного сообщения
+        required: true
+        default: Пробное сообщение от бота «Пары ГГТУ»
+
+# Рабочему процессу не нужны права на репозиторий: он только отправляет запрос в Telegram.
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Отправить сообщение в Telegram
+        # Все значения передаются через переменные окружения, а не вставляются в команду:
+        # так текст релиза не может подменить команду.
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          EVENT: ${{ github.event_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          TEST_TEXT: ${{ github.event.inputs.text }}
+        run: |
+          set -eu
+          if [ -z "${BOT_TOKEN}" ] || [ -z "${CHAT_ID}" ]; then
+            echo "Не заданы секреты TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID" >&2
+            exit 1
+          fi
+
+          if [ "${EVENT}" = "release" ]; then
+            # Разметку GitHub (звёздочки, обратные кавычки) убираем: в Telegram она показалась бы как есть.
+            body="$(printf '%s' "${RELEASE_BODY:0:3000}" | sed 's/\*\*//g; s/`//g')"
+            text="Вышла новая версия: ${RELEASE_NAME}"$'\n\n'"${body}"$'\n\n'"Скачать: ${RELEASE_URL}"
+          else
+            text="${TEST_TEXT}"
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --request POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${text}" \
+            --data-urlencode "disable_web_page_preview=true" > /dev/null
+          echo "Сообщение отправлено"
