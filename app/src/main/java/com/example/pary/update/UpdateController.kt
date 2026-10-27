@@ -58,6 +58,24 @@ class UpdateController(private val context: Context, private val scope: Coroutin
         if (found != null && state == UpdateUiState.Idle) state = UpdateUiState.Available(found)
     }
 
+    /**
+     * Проверка по кнопке в настройках, без ограничения «раз в полчаса».
+     * true: найдена новая версия, false: установлена последняя, null: проверить не удалось.
+     */
+    suspend fun checkNow(): Boolean? {
+        lastCheck = System.currentTimeMillis()
+        val found = try {
+            UpdateChecker.check(context)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return null
+        }
+        if (found == null) return false
+        if (state == UpdateUiState.Idle) state = UpdateUiState.Available(found)
+        return true
+    }
+
     /** Нажали «Обновить»: скачиваем и передаём установщику. */
     fun start() {
         val target = info ?: return

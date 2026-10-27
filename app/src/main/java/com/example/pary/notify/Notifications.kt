@@ -19,6 +19,7 @@ import com.example.pary.R
 object Notifications {
     const val REMINDERS_CHANNEL = "lesson_reminders"
     const val CHANGES_CHANNEL = "schedule_changes"
+    const val DIGEST_CHANNEL = "daily_digest"
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -34,6 +35,13 @@ object Notifications {
             NotificationChannel(
                 CHANGES_CHANNEL,
                 context.getString(R.string.channel_changes),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ),
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                DIGEST_CHANNEL,
+                context.getString(R.string.channel_digest),
                 NotificationManager.IMPORTANCE_DEFAULT,
             ),
         )

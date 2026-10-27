@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.pary"
         minSdk = 24
         targetSdk = 37
-        versionCode = 5
-        versionName = "1.22"
+        versionCode = 6
+        versionName = "1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -69,6 +69,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.work.runtime.ktx)
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))

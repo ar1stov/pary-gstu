@@ -22,6 +22,21 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 }
 
+/** Срабатывает по будильнику сводки дня (утренней или вечерней). */
+class DigestReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val kind = Digests.Kind.entries.firstOrNull { it.name == intent.getStringExtra(Digests.EXTRA_KIND) } ?: return
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.Default).launch {
+            try {
+                Digests.fire(context.applicationContext, kind)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+}
+
 /** После перезагрузки телефона и обновления приложения будильники пропадают: ставим их заново. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,6 +45,8 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val app = context.applicationContext
                 Reminders.reschedule(app)
+                Digests.reschedule(app)
+                ScheduleSync.enqueue(app)
                 updateScheduleWidgets(app)
             } finally {
                 pending.finish()

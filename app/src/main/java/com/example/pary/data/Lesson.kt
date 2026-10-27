@@ -78,29 +78,55 @@ fun List<Lesson>.dayToShow(today: Long, nowMinutes: Int, subgroup: Int = 0): Lon
 /** Номера подгрупп, которые встречаются в расписании (пусто — деления на подгруппы нет). */
 fun List<Lesson>.subgroupNumbers(): List<Int> = flatMap { it.subgroups }.distinct().sorted()
 
-/** Элемент списка дня: пара или окно между парами. */
+/** Элемент списка дня: пара, окно между парами или переход между корпусами. */
 sealed interface DayItem {
     class LessonItem(val lesson: Lesson) : DayItem
     class Gap(val minutes: Int) : DayItem
+
+    /** Следующая пара в другом корпусе: [from] и [to] — номера корпусов, [minutes] — длина перемены. */
+    class Transfer(val from: String, val to: String, val minutes: Int) : DayItem
 }
+
+/** Номер корпуса из названия аудитории: у «2-335» это «2»; для «Спортзал» и подобных null. */
+fun buildingOf(room: String): String? {
+    val prefix = room.trim().substringBefore('-', missingDelimiterValue = "")
+    return prefix.takeIf { it.isNotEmpty() && it.all { ch -> ch.isDigit() } }
+}
+
+/** Корпуса, в которых проходят пары (пусто, если у пар нет понятных аудиторий). */
+private fun buildingsOf(lessons: List<Lesson>): Set<String> =
+    lessons.flatMap { it.rooms }.mapNotNull { buildingOf(it) }.toSet()
 
 /**
  * Пары дня с «окнами» между ними: окном считаем паузу от [minGapMinutes] минут между концом
  * предыдущих пар и началом следующей (обычные перемены до 30 минут окнами не считаются).
  * Пары в одно и то же время (подгруппы) окна не создают.
+ * Если следующая пара в другом корпусе, а окна нет, перед ней добавляется [DayItem.Transfer].
  */
 fun dayItems(lessons: List<Lesson>, minGapMinutes: Int = 45): List<DayItem> {
     val items = mutableListOf<DayItem>()
     var latestEnd: Int? = null
-    for (lesson in lessons) {
-        val start = Dates.minutesOfDay(lesson.start)
-        val end = Dates.minutesOfDay(lesson.end)
+    var previousGroup: List<Lesson> = emptyList()
+    // Пары с одним временем начала (подгруппы) идут одним блоком: переход считаем между блоками.
+    for (block in lessons.groupBy { it.start }.values) {
+        val start = Dates.minutesOfDay(block.first().start)
         val previousEnd = latestEnd
-        if (previousEnd != null && start != null && start - previousEnd >= minGapMinutes) {
-            items += DayItem.Gap(start - previousEnd)
+        if (previousEnd != null && start != null) {
+            val gap = start - previousEnd
+            if (gap >= minGapMinutes) {
+                items += DayItem.Gap(gap)
+            } else if (gap >= 0) {
+                val from = buildingsOf(previousGroup)
+                val to = buildingsOf(block)
+                if (from.isNotEmpty() && to.isNotEmpty() && from.intersect(to).isEmpty()) {
+                    items += DayItem.Transfer(from.sorted().joinToString("/"), to.sorted().joinToString("/"), gap)
+                }
+            }
         }
-        items += DayItem.LessonItem(lesson)
-        if (end != null) latestEnd = maxOf(previousEnd ?: end, end)
+        block.forEach { items += DayItem.LessonItem(it) }
+        val blockEnd = block.mapNotNull { Dates.minutesOfDay(it.end) }.maxOrNull()
+        if (blockEnd != null) latestEnd = maxOf(previousEnd ?: blockEnd, blockEnd)
+        previousGroup = block
     }
     return items
 }

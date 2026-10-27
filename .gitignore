@@ -22,3 +22,6 @@ keystore.properties
 
 # Состояние хука Stop (отпечаток кода при последнем запуске тестов)
 .claude/hooks/.last_tested
+
+# Личная настройка подключения к Telegram (путь на этом компьютере)
+.mcp.json

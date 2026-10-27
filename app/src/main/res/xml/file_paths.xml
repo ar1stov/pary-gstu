@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Файлы, которыми приложение делится с другими: календарь (.ics) складывается во временную папку. -->
+<paths>
+    <cache-path name="calendar" path="calendar/" />
+</paths>
