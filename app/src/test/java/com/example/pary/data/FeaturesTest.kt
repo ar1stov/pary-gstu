@@ -218,6 +218,21 @@ class ScheduleExportTest {
     }
 }
 
+class ReleaseVersionRuleTest {
+    private fun newer(candidate: String, installed: String) = com.example.pary.update.Versions.isNewer(candidate, installed)
+
+    @Test
+    fun nextVersionAfter122MustBeComparedPartByPart() {
+        // 1.3 и 1.4 приложение считает старше 1.22: плашка обновления у версий 1.2–1.22 не появится
+        assertFalse(newer("1.3", "1.22"))
+        assertFalse(newer("1.4", "1.22"))
+        assertFalse(newer("1.4", "1.21"))
+        assertTrue(newer("1.23", "1.22"))
+        assertTrue(newer("2.0", "1.22"))
+        assertTrue(newer("2.0", "1.4"))
+    }
+}
+
 class NotesAndGroupsTest {
     @Test
     fun noteKeyContainsDayAndParses() {
