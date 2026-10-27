@@ -343,7 +343,11 @@ private fun LessonRow(
     rowModifier = rowModifier
         .padding(vertical = if (dense) 2.dp else 4.dp, horizontal = 6.dp)
         .clickable(openApp)
-    if (isNow) rowModifier = rowModifier.background(color { it.accentContainer }).cornerRadius(12.dp)
+    // Фон задаётся у каждой строки, в том числе прозрачный: иначе RemoteViews при перерисовке оставляет
+    // фон, который строка получила, пока шла пара, и подсвеченными оказываются сразу две пары.
+    rowModifier = rowModifier
+        .background(if (isNow) color { it.accentContainer } else ColorProvider(day = Color.Transparent, night = Color.Transparent))
+        .cornerRadius(12.dp)
 
     Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = GlanceModifier.width(44.dp)) {

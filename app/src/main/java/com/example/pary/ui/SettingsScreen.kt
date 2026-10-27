@@ -36,7 +36,6 @@ import com.example.pary.data.ThemeMode
 import com.example.pary.ui.theme.pary
 
 private val LeadOptions = listOf(15, 30, 60)
-private val TravelOptions = listOf(0, 15, 30, 45, 60)
 private val MorningTimes = listOf(6 * 60 + 30, 7 * 60, 7 * 60 + 30, 8 * 60)
 private val EveningTimes = listOf(19 * 60, 20 * 60, 21 * 60, 22 * 60)
 
@@ -57,7 +56,6 @@ fun SettingsScreen(
     onRemindersChange: (Boolean) -> Unit,
     onLeadChange: (Int) -> Unit,
     onModeChange: (ReminderMode) -> Unit,
-    onTravelChange: (Int) -> Unit,
     onMorningChange: (Boolean) -> Unit,
     onMorningTimeChange: (Int) -> Unit,
     onEveningChange: (Boolean) -> Unit,
@@ -135,16 +133,6 @@ fun SettingsScreen(
                                 onClick = { onModeChange(ReminderMode.EVERY_LESSON) },
                                 label = { Text(stringResource(R.string.reminder_mode_every)) },
                             )
-                        }
-                        Hint(stringResource(R.string.travel_hint))
-                        Chips {
-                            TravelOptions.forEach { minutes ->
-                                FilterChip(
-                                    selected = settings.travelMinutes == minutes,
-                                    onClick = { onTravelChange(minutes) },
-                                    label = { Text(if (minutes == 0) stringResource(R.string.travel_none) else "$minutes мин") },
-                                )
-                            }
                         }
                         TextButton(onClick = onSendSample) { Text(stringResource(R.string.show_sample)) }
                     }

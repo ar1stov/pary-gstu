@@ -102,6 +102,7 @@ import com.example.pary.data.formatGap
 import com.example.pary.data.isFinishedAt
 import com.example.pary.data.isRunningAt
 import com.example.pary.data.on
+import com.example.pary.data.slotCount
 import com.example.pary.data.subgroupNumbers
 import com.example.pary.notify.Notifications
 import com.example.pary.notify.Reminders
@@ -400,7 +401,6 @@ fun ScheduleScreen(
                 },
                 onLeadChange = { scope.launch { settingsRepository.setReminderLeadMinutes(it) } },
                 onModeChange = { scope.launch { settingsRepository.setReminderMode(it) } },
-                onTravelChange = { scope.launch { settingsRepository.setTravelMinutes(it) } },
                 onMorningChange = { on ->
                     if (on) withNotificationPermission { settingsRepository.setMorningDigest(true) }
                     else scope.launch { settingsRepository.setMorningDigest(false) }
@@ -888,7 +888,7 @@ private fun WeekOverview(
                             } else {
                                 stringResource(
                                     R.string.week_day_summary,
-                                    com.example.pary.notify.Digests.lessonsCount(dayLessons.size),
+                                    com.example.pary.notify.Digests.lessonsCount(dayLessons.slotCount()),
                                     dayLessons.minOf { it.start },
                                     dayLessons.maxOf { it.end },
                                 )

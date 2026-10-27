@@ -13,6 +13,7 @@ import com.example.pary.data.NotesRepository
 import com.example.pary.data.ScheduleRepository
 import com.example.pary.data.SettingsRepository
 import com.example.pary.data.nextDayWithLessons
+import com.example.pary.data.slotCount
 import com.example.pary.data.on
 import kotlinx.coroutines.flow.first
 
@@ -62,10 +63,15 @@ object Digests {
         return "$count $word"
     }
 
+    /** «подгр. 2» у пары для части группы, если у студента выбраны все подгруппы; иначе null. */
+    private fun subgroupLabel(lesson: Lesson, show: Boolean): String? =
+        if (show && lesson.subgroups.isNotEmpty()) "подгр. " + lesson.subgroups.sorted().joinToString(", ") else null
+
     /** Строка пары в сводке: «08:20–09:45 · Предмет · 2-335», с заметкой, если она есть. */
-    fun lessonLine(lesson: Lesson, note: String?): String {
+    fun lessonLine(lesson: Lesson, note: String?, showSubgroups: Boolean = false): String {
         val place = lesson.rooms.joinToString(", ").ifEmpty { null }
-        val base = listOfNotNull("${lesson.start}–${lesson.end}", lesson.subject, place).joinToString(" · ")
+        val groups = subgroupLabel(lesson, showSubgroups)
+        val base = listOfNotNull("${lesson.start}–${lesson.end}", lesson.subject, place, groups).joinToString(" · ")
         return if (note.isNullOrBlank()) base else "$base\n    📝 $note"
     }
 
@@ -107,27 +113,37 @@ object Digests {
             val due = next(lessons, group.subgroup, kind, minutes, now - 5 * 60_000L)
             if (due != null && due.triggerMillis <= now + 60_000L) {
                 val notes = NotesRepository(context).current()
-                post(context, due, notes, group.slug)
+                post(context, due, notes, group.slug, group.subgroup == 0)
             }
         }
         reschedule(context)
     }
 
-    /** Пример для кнопки в настройках: сводка ближайшего дня с парами, показывается сразу. */
+    /** Какие примеры показать: по одному на каждый включённый переключатель, а если оба выключены, утренний. */
+    fun sampleKinds(morning: Boolean, evening: Boolean): List<Kind> =
+        listOfNotNull(Kind.MORNING.takeIf { morning }, Kind.EVENING.takeIf { evening }).ifEmpty { listOf(Kind.MORNING) }
+
+    /**
+     * Пример для кнопки в настройках, показывается сразу: утренний — о сегодняшнем дне, вечерний — о завтрашнем
+     * (если в этот день пар нет, берётся ближайший день с парами).
+     */
     suspend fun postSample(context: Context) {
+        val settings = SettingsRepository(context).current()
         val group = GroupRepository(context).selectedGroup.first() ?: return
         val lessons = ScheduleRepository(context).cached(group.slug)?.lessons ?: return
-        val now = System.currentTimeMillis()
-        val day = lessons.nextDayWithLessons(Dates.todayOf(now), group.subgroup) ?: return
+        val today = Dates.todayOf(System.currentTimeMillis())
         val notes = NotesRepository(context).current()
-        val kind = if (day == Dates.todayOf(now)) Kind.MORNING else Kind.EVENING
-        post(context, Digest(kind, now, day, lessons.on(day, group.subgroup)), notes, group.slug)
+        for (kind in sampleKinds(settings.morningDigestEnabled, settings.eveningDigestEnabled)) {
+            val wanted = if (kind == Kind.MORNING) today else today + 1
+            val day = lessons.nextDayWithLessons(wanted, group.subgroup) ?: continue
+            post(context, Digest(kind, System.currentTimeMillis(), day, lessons.on(day, group.subgroup)), notes, group.slug, group.subgroup == 0)
+        }
     }
 
-    fun post(context: Context, digest: Digest, notes: Map<String, String>, slug: String) {
+    fun post(context: Context, digest: Digest, notes: Map<String, String>, slug: String, showSubgroups: Boolean = false) {
         Notifications.ensureChannels(context)
-        val lines = digest.lessons.map { lessonLine(it, notes[NotesRepository.key(slug, digest.day, it)]) }
-        val count = lessonsCount(digest.lessons.size)
+        val lines = digest.lessons.map { lessonLine(it, notes[NotesRepository.key(slug, digest.day, it)], showSubgroups) }
+        val count = lessonsCount(digest.lessons.slotCount())
         val title = context.getString(
             if (digest.kind == Kind.MORNING) R.string.digest_title_today else R.string.digest_title_tomorrow,
             count,

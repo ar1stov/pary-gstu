@@ -15,6 +15,7 @@ import com.example.pary.data.ScheduleRepository
 import com.example.pary.data.SettingsRepository
 import com.example.pary.data.WeekType
 import com.example.pary.data.on
+import com.example.pary.data.slotCount
 import kotlinx.coroutines.flow.first
 
 /** Напоминания о парах: будильник ставится на «время пары минус N минут». */
@@ -33,15 +34,12 @@ object Reminders {
         val minutesBefore: Int,
         val dayLessonCount: Int,
         val lastEnd: String,
-        /** Сколько минут из [minutesBefore] заложено на дорогу (только у первой пары дня). */
-        val travelMinutes: Int = 0,
     )
 
     /**
      * Ближайшее напоминание после [nowMillis] (смотрим на две недели вперёд) или null, если пар нет.
      * В режиме [ReminderMode.EVERY_LESSON] напоминание о следующей паре приходит за [leadMinutes] минут
      * до её начала, но не раньше конца предыдущей: на перемене, а не посреди пары.
-     * Напоминание о первой паре дня приходит ещё на [travelMinutes] минут раньше: это время на дорогу.
      */
     fun next(
         lessons: List<Lesson>,
@@ -49,7 +47,6 @@ object Reminders {
         leadMinutes: Int,
         nowMillis: Long,
         mode: ReminderMode = ReminderMode.FIRST_ONLY,
-        travelMinutes: Int = 0,
     ): Reminder? {
         val today = Dates.todayOf(nowMillis)
         for (i in 0..14) {
@@ -66,16 +63,13 @@ object Reminders {
                 val startMinute = Dates.minutesOfDay(start) ?: continue
                 if (isFirst || mode == ReminderMode.EVERY_LESSON) {
                     val triggerMinute = if (isFirst) {
-                        startMinute - leadMinutes - travelMinutes
+                        startMinute - leadMinutes
                     } else {
                         maxOf(startMinute - leadMinutes, previousEnd ?: 0)
                     }
                     val trigger = dayStart + triggerMinute * 60_000L
                     if (trigger > nowMillis) {
-                        return Reminder(
-                            trigger, group, isFirst, startMinute - triggerMinute, dayLessons.size, lastEnd,
-                            travelMinutes = if (isFirst) travelMinutes else 0,
-                        )
+                        return Reminder(trigger, group, isFirst, startMinute - triggerMinute, dayLessons.slotCount(), lastEnd)
                     }
                 }
                 val groupEnd = group.maxOf { Dates.minutesOfDay(it.end) ?: startMinute }
@@ -94,10 +88,7 @@ object Reminders {
         val group = GroupRepository(context).selectedGroup.first()
         val lessons = group?.let { ScheduleRepository(context).cached(it.slug)?.lessons }
         val reminder = if (settings.remindersEnabled && group != null && lessons != null) {
-            next(
-                lessons, group.subgroup, settings.reminderLeadMinutes, System.currentTimeMillis(),
-                settings.reminderMode, settings.travelMinutes,
-            )
+            next(lessons, group.subgroup, settings.reminderLeadMinutes, System.currentTimeMillis(), settings.reminderMode)
         } else {
             null
         }
@@ -121,10 +112,7 @@ object Reminders {
         if (settings.remindersEnabled && group != null && lessons != null) {
             val now = System.currentTimeMillis()
             // Будильник сработал в момент напоминания, поэтому ищем его, отступив на 5 минут назад.
-            val due = next(
-                lessons, group.subgroup, settings.reminderLeadMinutes, now - 5 * 60_000L, settings.reminderMode,
-                settings.travelMinutes,
-            )
+            val due = next(lessons, group.subgroup, settings.reminderLeadMinutes, now - 5 * 60_000L, settings.reminderMode)
             if (due != null && due.triggerMillis <= now + 60_000L) {
                 post(context, due)
             }
@@ -143,14 +131,9 @@ object Reminders {
             .setAutoCancel(true)
         if (reminder.isFirstOfDay) {
             val summary = context.getString(R.string.reminder_summary, reminder.dayLessonCount, reminder.lastEnd)
-            val travel = if (reminder.travelMinutes > 0) {
-                "\n" + context.getString(R.string.reminder_travel_hint, formatMinutes(reminder.travelMinutes))
-            } else {
-                ""
-            }
             builder.setContentTitle(context.getString(R.string.reminder_title, before))
                 .setContentText(line)
-                .setStyle(NotificationCompat.BigTextStyle().bigText("$line\n$summary$travel"))
+                .setStyle(NotificationCompat.BigTextStyle().bigText("$line\n$summary"))
         } else {
             builder.setContentTitle(context.getString(R.string.reminder_next_title, before))
                 .setContentText(line)

@@ -26,31 +26,42 @@ private fun lesson(
 
 private fun at(day: Long, hour: Int, minute: Int) = Dates.startOfDayMillis(day) + (hour * 60 + minute) * 60_000L
 
-class TravelReminderTest {
-    private val lessons = listOf(lesson(), lesson(start = "10:00", end = "11:25", number = 2))
+class SubgroupDigestTest {
+    private val common = lesson(subject = "Лекция для всех")
+    private val second = Lesson(
+        dayOfWeek = 0, number = 2, start = "10:00", end = "11:25", subject = "Лаба", type = "Лабораторная",
+        teachers = emptyList(), rooms = listOf("2-335"), weekType = WeekType.ALL,
+        firstDay = monday, lastDay = monday + 60, subgroups = setOf(2),
+    )
 
     @Test
-    fun firstLessonReminderComesEarlierByTravelTime() {
-        val reminder = Reminders.next(lessons, 0, 30, at(monday - 1, 12, 0), ReminderMode.FIRST_ONLY, travelMinutes = 40)!!
-        assertEquals(at(monday, 7, 10), reminder.triggerMillis)
-        assertEquals(70, reminder.minutesBefore)
-        assertEquals(40, reminder.travelMinutes)
+    fun chosenSubgroupSeesOnlyItsLessons() {
+        val digest = Digests.next(listOf(common, second), 1, Digests.Kind.MORNING, 7 * 60, at(monday - 1, 12, 0))!!
+        assertEquals(listOf("Лекция для всех"), digest.lessons.map { it.subject })
     }
 
     @Test
-    fun laterLessonsIgnoreTravelTime() {
-        val every = ReminderMode.EVERY_LESSON
-        val first = Reminders.next(lessons, 0, 30, at(monday - 1, 12, 0), every, travelMinutes = 40)!!
-        val second = Reminders.next(lessons, 0, 30, first.triggerMillis, every, travelMinutes = 40)!!
-        assertEquals(at(monday, 9, 45), second.triggerMillis)
-        assertEquals(0, second.travelMinutes)
+    fun allSubgroupsLabelsLessonsOfSubgroups() {
+        assertEquals("10:00–11:25 · Лаба · 2-335 · подгр. 2", Digests.lessonLine(second, null, showSubgroups = true))
+        assertEquals("10:00–11:25 · Лаба · 2-335", Digests.lessonLine(second, null, showSubgroups = false))
+        // пара для всей группы подписи не получает
+        assertEquals("08:20–09:45 · Лекция для всех", Digests.lessonLine(common, null, showSubgroups = true))
     }
 
     @Test
-    fun noTravelTimeKeepsOldBehaviour() {
-        val reminder = Reminders.next(lessons, 0, 30, at(monday - 1, 12, 0))!!
-        assertEquals(at(monday, 7, 50), reminder.triggerMillis)
-        assertEquals(0, reminder.travelMinutes)
+    fun lessonsAtTheSameTimeCountAsOne() {
+        val other = second.copy(start = "08:20", end = "09:45", subgroups = setOf(1))
+        val day = listOf(common, other, second).on(monday, 0)
+        assertEquals(3, day.size)
+        assertEquals(2, day.slotCount())
+    }
+
+    @Test
+    fun sampleFollowsTheSwitches() {
+        assertEquals(listOf(Digests.Kind.MORNING), Digests.sampleKinds(morning = true, evening = false))
+        assertEquals(listOf(Digests.Kind.EVENING), Digests.sampleKinds(morning = false, evening = true))
+        assertEquals(Digests.Kind.entries, Digests.sampleKinds(morning = true, evening = true))
+        assertEquals(listOf(Digests.Kind.MORNING), Digests.sampleKinds(morning = false, evening = false))
     }
 }
 
@@ -230,6 +241,9 @@ class ReleaseVersionRuleTest {
         assertTrue(newer("1.23", "1.22"))
         assertTrue(newer("2.0", "1.22"))
         assertTrue(newer("2.0", "1.4"))
+        assertTrue(newer("2.0.1", "2.0"))
+        assertTrue(newer("2.0.1", "1.22"))
+        assertFalse(newer("2.0", "2.0.1"))
     }
 }
 

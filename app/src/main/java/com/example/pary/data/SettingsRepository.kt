@@ -26,7 +26,6 @@ data class AppSettings(
     /** О первой паре дня или о каждой. */
     val reminderMode: ReminderMode = ReminderMode.FIRST_ONLY,
     /** Сколько минут занимает дорога: напоминание о первой паре дня приходит на столько раньше. */
-    val travelMinutes: Int = 0,
     /** Присылать уведомление, когда расписание изменилось. */
     val changeAlertsEnabled: Boolean = true,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -44,7 +43,6 @@ class SettingsRepository(private val context: Context) {
     private val remindersKey = booleanPreferencesKey("reminders_enabled")
     private val leadKey = intPreferencesKey("reminder_lead_minutes")
     private val modeKey = intPreferencesKey("reminder_mode")
-    private val travelKey = intPreferencesKey("travel_minutes")
     private val changeAlertsKey = booleanPreferencesKey("change_alerts_enabled")
     private val themeKey = intPreferencesKey("theme_mode")
     private val morningKey = booleanPreferencesKey("digest_morning_enabled")
@@ -69,11 +67,6 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setReminderMode(mode: ReminderMode) {
         context.dataStore.edit { it[modeKey] = mode.ordinal }
-        Reminders.reschedule(context)
-    }
-
-    suspend fun setTravelMinutes(minutes: Int) {
-        context.dataStore.edit { it[travelKey] = minutes }
         Reminders.reschedule(context)
     }
 
@@ -113,7 +106,6 @@ class SettingsRepository(private val context: Context) {
         remindersEnabled = this[remindersKey] ?: false,
         reminderLeadMinutes = this[leadKey] ?: 30,
         reminderMode = ReminderMode.entries.getOrElse(this[modeKey] ?: 0) { ReminderMode.FIRST_ONLY },
-        travelMinutes = this[travelKey] ?: 0,
         changeAlertsEnabled = this[changeAlertsKey] ?: true,
         themeMode = ThemeMode.entries.getOrElse(this[themeKey] ?: 0) { ThemeMode.SYSTEM },
         morningDigestEnabled = this[morningKey] ?: false,

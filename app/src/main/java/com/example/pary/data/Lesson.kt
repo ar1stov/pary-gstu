@@ -61,6 +61,9 @@ fun Lesson.isFinishedAt(minutes: Int): Boolean {
 fun List<Lesson>.on(day: Long, subgroup: Int = 0): List<Lesson> =
     filter { it.isOn(day) && it.isForSubgroup(subgroup) }.sortedWith(compareBy({ it.number }, { it.start }))
 
+/** Сколько пар у студента: пары разных подгрупп в одно время считаются за одну. */
+fun List<Lesson>.slotCount(): Int = map { it.start }.distinct().size
+
 /** Первый день начиная с [from] (в пределах [limit] дней), в который есть пары. */
 fun List<Lesson>.nextDayWithLessons(from: Long, subgroup: Int = 0, limit: Int = 14): Long? =
     (0..limit).map { from + it }.firstOrNull { day -> any { it.isOn(day) && it.isForSubgroup(subgroup) } }
