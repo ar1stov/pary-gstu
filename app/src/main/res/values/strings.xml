@@ -19,8 +19,9 @@
     <string name="widget_description">Все пары дня. Когда сегодняшние закончились, показывает ближайший день с парами</string>
     <string name="widget_pick_group">Откройте приложение и выберите группу</string>
     <string name="widget_no_data">Расписание ещё не загружено. Откройте приложение с интернетом.</string>
-    <string name="widget_no_lessons_today">Сегодня пар нет. Ближайшие занятия:</string>
-    <string name="widget_today_done">Сегодня пары закончились. Ближайшие занятия:</string>
+    <string name="widget_loading">Загружаю расписание…</string>
+    <string name="widget_no_lessons_today">сегодня пар нет</string>
+    <string name="widget_today_done">сегодня пары закончились</string>
     <string name="widget_no_lessons_soon">В ближайшие две недели пар нет</string>
     <string name="subgroup_all">Все подгруппы</string>
     <string name="subgroup_n">Подгруппа %1$d</string>

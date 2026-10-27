@@ -2,9 +2,13 @@ package com.example.pary.notify
 
 import android.content.Context
 import com.example.pary.widget.updateScheduleWidgets
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /** Что нужно пересчитать, когда поменялись группа, подгруппа или расписание: виджеты и напоминание. */
 suspend fun onScheduleChanged(context: Context) {
-    updateScheduleWidgets(context)
-    Reminders.reschedule(context)
+    coroutineScope {
+        launch { updateScheduleWidgets(context) }
+        launch { Reminders.reschedule(context) }
+    }
 }

@@ -3,14 +3,23 @@ package com.example.pary.widget
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.LocalSize
 import androidx.glance.action.Action
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.lazy.LazyColumn
@@ -25,6 +34,7 @@ import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
@@ -49,43 +59,88 @@ import com.example.pary.ui.theme.ParyPalette
 import com.example.pary.ui.theme.lessonAccent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Виджет «Расписание на сегодня»: берёт данные из того же кэша, что и приложение. */
 open class ScheduleWidget(private val isCompact: Boolean = false) : GlanceAppWidget() {
 
+    // Большому виджету нужен точный размер: по нему считается высота строки, чтобы вмещались ровно 4 пары.
+    override val sizeMode: SizeMode get() = if (isCompact) SizeMode.Single else SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val group = GroupRepository(context).selectedGroup.first()
         val repository = ScheduleRepository(context)
 
-        var snapshot = group?.let { repository.cached(it.slug) }
-        val isStale = snapshot == null || System.currentTimeMillis() - snapshot.savedAt > STALE_AFTER_MS
-        if (group != null && isStale) {
-            // Не вышло обновить — показываем то, что было сохранено.
-            snapshot = try {
-                repository.refresh(group.slug, group.subgroup).also { fresh ->
-                    if (fresh.changes.isNotEmpty() && SettingsRepository(context).current().changeAlertsEnabled) {
-                        ChangeNotifier.post(context, group.name, fresh.changes)
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                snapshot
-            }
-        }
+        // Сразу рисуем то, что сохранено на телефоне; из сети догружаем уже после первой отрисовки,
+        // иначе виджет после смены группы ждал бы ответа сайта и показывал бы старое.
+        val startVersion = WidgetVersion.flow.value
+        val first = loadData(context, repository)
 
-        val lessons = snapshot?.lessons
-        val now = System.currentTimeMillis()
-        val today = Dates.todayOf(now)
-        val nowMinutes = Dates.minutesOfDayAt(now)
-        if (group != null && lessons != null) {
-            WidgetScheduler.scheduleNext(context, lessons, group.subgroup, now)
+        provideContent {
+            // Пока сессия виджета жива, повторное обновление не вызывает provideGlance заново, а лишь
+            // перерисовывает то же содержимое: без этого после смены подгруппы виджет оставался бы старым.
+            // Поэтому данные хранятся в состоянии и перечитываются при каждом новом номере обновления.
+            val version by WidgetVersion.flow.collectAsState()
+            var data by remember { mutableStateOf(first) }
+            LaunchedEffect(version) {
+                if (version != startVersion) data = loadData(context, repository)
+                val group = data.group ?: return@LaunchedEffect
+                val shown = data.snapshot
+                if (shown == null || data.nowMillis - shown.savedAt > STALE_AFTER_MS) {
+                    val fresh = refreshOnce(context, repository, group)
+                    data = data.copy(snapshot = fresh ?: data.snapshot, loading = false, nowMillis = System.currentTimeMillis())
+                }
+                data.snapshot?.let { WidgetScheduler.scheduleNext(context, it.lessons, group.subgroup, System.currentTimeMillis()) }
+            }
+            val today = Dates.todayOf(data.nowMillis)
+            val nowMinutes = Dates.minutesOfDayAt(data.nowMillis)
+            WidgetContent(context, data.group, data.snapshot?.lessons, today, nowMinutes, isCompact, data.loading)
         }
-        provideContent { WidgetContent(context, group, lessons, today, nowMinutes, isCompact) }
+    }
+
+    /** Всё, что нужно для отрисовки виджета; берётся только с телефона, без сети. */
+    private class WidgetData(
+        val group: GroupInfo?,
+        val snapshot: ScheduleRepository.Snapshot?,
+        val loading: Boolean,
+        val nowMillis: Long,
+    ) {
+        fun copy(
+            snapshot: ScheduleRepository.Snapshot? = this.snapshot,
+            loading: Boolean = this.loading,
+            nowMillis: Long = this.nowMillis,
+        ) = WidgetData(group, snapshot, loading, nowMillis)
+    }
+
+    private suspend fun loadData(context: Context, repository: ScheduleRepository): WidgetData {
+        val group = GroupRepository(context).selectedGroup.first()
+        val cached = group?.let { repository.cached(it.slug) }
+        return WidgetData(group, cached, loading = group != null && cached == null, nowMillis = System.currentTimeMillis())
     }
 
     private companion object {
         const val STALE_AFTER_MS = 3 * 60 * 60 * 1000L
+
+        /** Два виджета обновляются одновременно: второй не идёт в сеть, если первый уже всё загрузил. */
+        val refreshLock = Mutex()
+
+        /** Свежее расписание или то, что было сохранено, если сайт не ответил; null, если нет ничего. */
+        suspend fun refreshOnce(context: Context, repository: ScheduleRepository, group: GroupInfo): ScheduleRepository.Snapshot? =
+            refreshLock.withLock {
+                val latest = repository.cached(group.slug)
+                if (latest != null && System.currentTimeMillis() - latest.savedAt <= STALE_AFTER_MS) return@withLock latest
+                try {
+                    repository.refresh(group.slug, group.subgroup).also { fresh ->
+                        if (fresh.changes.isNotEmpty() && SettingsRepository(context).current().changeAlertsEnabled) {
+                            ChangeNotifier.post(context, group.name, fresh.changes)
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    latest
+                }
+            }
     }
 }
 
@@ -108,6 +163,7 @@ private fun WidgetContent(
     today: Long,
     nowMinutes: Int,
     isCompact: Boolean,
+    loading: Boolean,
 ) {
     val openApp = actionStartActivity(Intent(context, MainActivity::class.java))
     Column(
@@ -120,7 +176,7 @@ private fun WidgetContent(
     ) {
         when {
             group == null -> Message(context.getString(R.string.widget_pick_group))
-            lessons == null -> Message(context.getString(R.string.widget_no_data))
+            lessons == null -> Message(context.getString(if (loading) R.string.widget_loading else R.string.widget_no_data))
             isCompact -> CompactSchedule(context, group, lessons, today, nowMinutes, openApp)
             else -> Schedule(context, group, lessons, today, nowMinutes, openApp)
         }
@@ -146,10 +202,23 @@ private fun Schedule(
     val isAbove = Dates.isAboveWeek(day)
     val week = context.getString(if (isAbove) R.string.week_above else R.string.week_below)
 
+    // Сегодня пары были, но закончились, или их не было совсем: короткая пометка рядом с датой.
+    val note = if (shownDay != null && shownDay != today) {
+        val hadLessonsToday = lessons.on(today, group.subgroup).isNotEmpty()
+        context.getString(if (hadLessonsToday) R.string.widget_today_done else R.string.widget_no_lessons_today)
+    } else {
+        null
+    }
+
     Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = GlanceModifier.defaultWeight()) {
-            Text(text = Dates.longLabel(day), style = style({ it.textMuted }, 12))
-            Text(text = group.name, style = style({ it.text }, 22, bold = true))
+            Row {
+                Text(text = Dates.longLabel(day), maxLines = 1, style = style({ it.textMuted }, 12))
+                if (note != null) {
+                    Text(text = " · $note", maxLines = 1, style = style({ it.accent }, 12))
+                }
+            }
+            Text(text = group.name, style = style({ it.text }, 20, bold = true))
         }
         Text(
             text = "● $week",
@@ -160,26 +229,50 @@ private fun Schedule(
         Message(context.getString(R.string.widget_no_lessons_soon), GlanceModifier.padding(top = 10.dp))
         return
     }
-    if (shownDay != today) {
-        // Сегодня пары были, но закончились, или их не было совсем.
-        val hadLessonsToday = lessons.on(today, group.subgroup).isNotEmpty()
-        Text(
-            text = context.getString(if (hadLessonsToday) R.string.widget_today_done else R.string.widget_no_lessons_today),
-            modifier = GlanceModifier.padding(top = 6.dp),
-            style = style({ it.accent }, 12),
-        )
-    }
-    LazyColumn(modifier = GlanceModifier.fillMaxSize().padding(top = 8.dp)) {
-        items(lessons.on(day, group.subgroup)) { lesson ->
-            LessonRow(
-                lesson,
-                isNow = day == today && lesson.isRunningAt(nowMinutes),
-                openApp = openApp,
-                isDone = day == today && lesson.isFinishedAt(nowMinutes),
-            )
+
+    // Высота строки подбирается так, чтобы в оставшееся место помещались ровно ROWS_VISIBLE пар:
+    // от высоты виджета отнимаем поля, шапку и отступ под ней.
+    val rowHeight = ((LocalSize.current.height.value - 2 * WIDGET_PADDING_DP - HEADER_DP - LIST_GAP_DP) / ROWS_VISIBLE - 0.5f)
+        .coerceAtLeast(MIN_ROW_DP).dp
+    val dayLessons = lessons.on(day, group.subgroup)
+    if (dayLessons.size <= ROWS_VISIBLE) {
+        // До четырёх пар: место делится поровну между четырьмя строками по настоящей высоте виджета
+        // (пустые строки держат размер), поэтому пары заполняют его ровно при любой высоте.
+        Column(modifier = GlanceModifier.fillMaxSize().padding(top = LIST_GAP_DP.dp)) {
+            dayLessons.forEach { lesson ->
+                LessonRow(
+                    lesson,
+                    isNow = day == today && lesson.isRunningAt(nowMinutes),
+                    openApp = openApp,
+                    isDone = day == today && lesson.isFinishedAt(nowMinutes),
+                    rowHeight = rowHeight,
+                    modifier = GlanceModifier.defaultWeight(),
+                )
+            }
+            repeat(ROWS_VISIBLE - dayLessons.size) { Box(modifier = GlanceModifier.defaultWeight()) {} }
+        }
+    } else {
+        // Больше четырёх пар: список прокручивается, видимых строк по-прежнему четыре.
+        LazyColumn(modifier = GlanceModifier.fillMaxSize().padding(top = LIST_GAP_DP.dp)) {
+            items(dayLessons) { lesson ->
+                LessonRow(
+                    lesson,
+                    isNow = day == today && lesson.isRunningAt(nowMinutes),
+                    openApp = openApp,
+                    isDone = day == today && lesson.isFinishedAt(nowMinutes),
+                    rowHeight = rowHeight,
+                    fixedHeight = true,
+                )
+            }
         }
     }
 }
+
+private const val ROWS_VISIBLE = 4
+private const val WIDGET_PADDING_DP = 14f
+private const val HEADER_DP = 40f
+private const val LIST_GAP_DP = 6f
+private const val MIN_ROW_DP = 26f
 
 private class Shown(val day: Long, val lessons: List<Lesson>)
 
@@ -228,17 +321,31 @@ private fun CompactSchedule(
 }
 
 @Composable
-private fun LessonRow(lesson: Lesson, isNow: Boolean, openApp: Action, compact: Boolean = false, isDone: Boolean = false) {
+private fun LessonRow(
+    lesson: Lesson,
+    isNow: Boolean,
+    openApp: Action,
+    compact: Boolean = false,
+    isDone: Boolean = false,
+    /** Высота строки большого виджета: по ней выбираем размер шрифта, а при [fixedHeight] ещё и задаём её. */
+    rowHeight: Dp? = null,
+    fixedHeight: Boolean = false,
+    modifier: GlanceModifier = GlanceModifier,
+) {
     val accent: Pick = { lessonAccent(lesson.type, it) }
     val textColor: Pick = if (isDone) { { it.textMuted } } else { { it.text } }
-    val main = if (compact) 12 else 13
-    val small = if (compact) 10 else 11
-    var modifier = GlanceModifier.fillMaxWidth()
-        .padding(vertical = if (compact) 3.dp else 4.dp, horizontal = 6.dp)
+    // В невысокой строке две строки текста по 13 и 11 sp не уместятся: берём мельче.
+    val dense = compact || (rowHeight != null && rowHeight < 36.dp)
+    val main = if (dense) 12 else 13
+    val small = if (dense) 10 else 11
+    var rowModifier = modifier.fillMaxWidth()
+    if (fixedHeight && rowHeight != null) rowModifier = rowModifier.height(rowHeight)
+    rowModifier = rowModifier
+        .padding(vertical = if (dense) 2.dp else 4.dp, horizontal = 6.dp)
         .clickable(openApp)
-    if (isNow) modifier = modifier.background(color { it.accentContainer }).cornerRadius(12.dp)
+    if (isNow) rowModifier = rowModifier.background(color { it.accentContainer }).cornerRadius(12.dp)
 
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = GlanceModifier.width(44.dp)) {
             Text(text = lesson.start, style = style(textColor, main, bold = true))
             Text(text = lesson.end, style = style({ it.textMuted }, small))
